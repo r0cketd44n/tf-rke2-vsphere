@@ -1,20 +1,20 @@
 # ---------------------------
 # vSphere lookups (IDs)
 # ---------------------------
-data "vsphere_datacenter" "dc" { name = var.vsphere_datacenter }
-data "vsphere_compute_cluster" "cc" {
-  name          = var.vsphere_cluster
-  datacenter_id = data.vsphere_datacenter.dc.id
-}
-data "vsphere_datastore" "ds" {
-  name          = var.vsphere_datastore
-  datacenter_id = data.vsphere_datacenter.dc.id
-}
-data "vsphere_network" "nets" {
-  for_each      = toset(var.vsphere_networks)
-  name          = each.key
-  datacenter_id = data.vsphere_datacenter.dc.id
-}
+# data "vsphere_datacenter" "dc" { name = var.vsphere_datacenter }
+# data "vsphere_compute_cluster" "cc" {
+#   name          = var.vsphere_cluster
+#   datacenter_id = data.vsphere_datacenter.dc.id
+# }
+# data "vsphere_datastore" "ds" {
+#   name          = var.vsphere_datastore
+#   datacenter_id = data.vsphere_datacenter.dc.id
+# }
+# data "vsphere_network" "nets" {
+#   for_each      = toset(var.vsphere_networks)
+#   name          = each.key
+#   datacenter_id = data.vsphere_datacenter.dc.id
+# }
 
 # ---------------------------
 # Rancher Cloud Credential for vSphere (used by machine pools)
@@ -33,93 +33,24 @@ resource "rancher2_cloud_credential" "vsphere" {
 # Two worker configs so you can choose Ubuntu or Rocky
 # ---------------------------
 
-# Control plane / etcd nodes (use Ubuntu here; change to Rocky if you prefer)
-resource "rancher2_vsphere_machine_config_v2" "cp" {
-  generate_name   = "${var.cluster_name}-cp-"
-  clone_from      = var.template_ubuntu
-  datacenter      = var.vsphere_datacenter
-  datastore       = var.vsphere_datastore
-  folder          = var.vsphere_folder
-  cpu_count       = var.cp_etcd_cpu
-  memory_size     = var.cp_etcd_memory_mb
-  disk_size       = var.cp_etcd_disk_gb * 1024
-  network         = [for n in data.vsphere_network.nets : n.value.name]
-  resource_pool   = var.vsphere_resource_pool != "" ? var.vsphere_resource_pool : null
-  cloud_config    = <<-CLOUD
-    #cloud-config
-    users:
-      - name: ${var.ssh_username}
-        ssh-authorized-keys:
-          - ${trimspace(chomp(filebase64decode(base64encode(var.ssh_private_key_pem)))) != "" ? chomp(join("\n", [
-              "ssh-rsa PLACEHOLDER_IF_NEEDED"
-            ])) : "ssh-rsa PLACEHOLDER_IF_NEEDED"}
-        sudo: ALL=(ALL) NOPASSWD:ALL
-        shell: /bin/bash
-    package_update: true
-    write_files:
-      - path: /etc/motd
-        permissions: "0644"
-        content: |
-          Managed by Rancher (CP/ETCD)
-  CLOUD
+# Control plane / etcd nodes
+resource "rancher2_machine_config_v2" "rhel-cp" {
+  generate_name = "${var.cluster_name}-cp-el9-"
+  vsphere_config {
+    # not specifying anything other than the OVA we're cloning from 
+    # all other specs inherited from Packer-created OVA
+    clone_from = var.vsphere-rhel-template
+  }
 }
 
-# Worker (Ubuntu)
-resource "rancher2_vsphere_machine_config_v2" "worker_ubuntu" {
-  generate_name   = "${var.cluster_name}-wk-ubu-"
-  clone_from      = var.template_ubuntu
-  datacenter      = var.vsphere_datacenter
-  datastore       = var.vsphere_datastore
-  folder          = var.vsphere_folder
-  cpu_count       = var.worker_cpu
-  memory_size     = var.worker_memory_mb
-  disk_size       = var.worker_disk_gb * 1024
-  network         = [for n in data.vsphere_network.nets : n.value.name]
-  resource_pool   = var.vsphere_resource_pool != "" ? var.vsphere_resource_pool : null
-  cloud_config    = <<-CLOUD
-    #cloud-config
-    users:
-      - name: ${var.ssh_username}
-        ssh-authorized-keys:
-          - ssh-rsa PLACEHOLDER_IF_NEEDED
-        sudo: ALL=(ALL) NOPASSWD:ALL
-        shell: /bin/bash
-    package_update: true
-    write_files:
-      - path: /etc/motd
-        permissions: "0644"
-        content: |
-          Managed by Rancher (Worker Ubuntu)
-  CLOUD
-}
-
-# Worker (Rocky Linux)
-resource "rancher2_vsphere_machine_config_v2" "worker_rocky" {
-  generate_name   = "${var.cluster_name}-wk-rky-"
-  clone_from      = var.template_rocky
-  datacenter      = var.vsphere_datacenter
-  datastore       = var.vsphere_datastore
-  folder          = var.vsphere_folder
-  cpu_count       = var.worker_cpu
-  memory_size     = var.worker_memory_mb
-  disk_size       = var.worker_disk_gb * 1024
-  network         = [for n in data.vsphere_network.nets : n.value.name]
-  resource_pool   = var.vsphere_resource_pool != "" ? var.vsphere_resource_pool : null
-  cloud_config    = <<-CLOUD
-    #cloud-config
-    users:
-      - name: ${var.ssh_username}
-        ssh-authorized-keys:
-          - ssh-rsa PLACEHOLDER_IF_NEEDED
-        sudo: ALL=(ALL) NOPASSWD:ALL
-        shell: /bin/bash
-    package_update: true
-    write_files:
-      - path: /etc/motd
-        permissions: "0644"
-        content: |
-          Managed by Rancher (Worker Rocky)
-  CLOUD
+# Worker (rhel)
+resource "rancher2_machine_config_v2" "rhel-worker" {
+  generate_name = "${var.cluster_name}-wk-el9-"
+  vsphere_config {
+    # not specifying anything other than the OVA we're cloning from 
+    # all other specs inherited from Packer-created OVA
+    clone_from = var.vsphere-rhel-template
+  }
 }
 
 # ---------------------------
@@ -138,7 +69,7 @@ resource "rancher2_cluster_v2" "rke2" {
       quantity                 = var.cp_etcd_quantity
       machine_config {
         kind = "VmwarevsphereConfig"
-        name = rancher2_vsphere_machine_config_v2.cp.name
+        name = rancher2_machine_config_v2.rhel-cp
       }
       cloud_credential_secret_name = rancher2_cloud_credential.vsphere.id
       drain_before_delete           = true
@@ -148,33 +79,18 @@ resource "rancher2_cluster_v2" "rke2" {
 
     # Workers on Ubuntu
     machine_pools {
-      name                     = "workers-ubuntu"
+      name                     = "workers"
       etcd_role                = false
       control_plane_role       = false
       worker_role              = true
       quantity                 = var.worker_quantity
       machine_config {
         kind = "VmwarevsphereConfig"
-        name = rancher2_vsphere_machine_config_v2.worker_ubuntu.name
+        name = rancher2_machine_config_v2.rhel-worker
       }
       cloud_credential_secret_name = rancher2_cloud_credential.vsphere.id
       drain_before_delete           = true
     }
-
-    # Workers on Rocky (disable above if using this)
-    # machine_pools {
-    #   name                     = "workers-rocky"
-    #   etcd_role                = false
-    #   control_plane_role       = false
-    #   worker_role              = true
-    #   quantity                 = var.worker_quantity
-    #   machine_config {
-    #     kind = "VmwarevsphereConfig"
-    #     name = rancher2_vsphere_machine_config_v2.worker_rocky.name
-    #   }
-    #   cloud_credential_secret_name = rancher2_cloud_credential.vsphere.id
-    #   drain_before_delete           = true
-    # }
 
     # Cluster networking
     machine_global_config = <<-EOT
@@ -191,25 +107,18 @@ ${join("\n", [for s in var.kube_api_sans : "        - \"" + s + "\""])}
     # Private registry and custom CA (air-gapped)
     registries {
       # All images will be pulled through this registry prefix
-      system_default_registry = var.system_default_registry
-
       # Per-registry config (auth + TLS CA)
       configs {
-        host = var.system_default_registry
-        auth_config {
-          username = var.registry_auth_username
-          password = var.registry_auth_password
-        }
-        tls_config {
-          ca_bundle = var.registry_ca_bundle_pem
-        }
+        hostname = var.system_default_registry
+        auth_config_secret_name = ""
+        ca_bundle = var.registry_ca_bundle_pem
       }
 
-      # Optional mirror example (uncomment and adapt)
-      # mirrors {
-      #   host      = "docker.io"
-      #   endpoints = ["https://${var.system_default_registry}/v2/docker.io"]
-      # }
+
+      mirrors {
+        hostname      = "*"
+        endpoints = [var.airgap_private_mirror]
+      }
     }
   }
 }

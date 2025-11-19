@@ -43,42 +43,46 @@ variable "vsphere_password" {
   sensitive = true
 }
 
-variable "vsphere_allow_unverified_ssl" {
-  type    = bool
-  default = false
-}
+# variable "vsphere_allow_unverified_ssl" {
+#   type    = bool
+#   default = false
+# }
 
-variable "vsphere_datacenter" {
-  type = string
-}
+# variable "vsphere_datacenter" {
+#   type = string
+# }
 
-variable "vsphere_cluster" {
-  type = string
-}
+# variable "vsphere_cluster" {
+#   type = string
+# }
 
-variable "vsphere_datastore" {
-  type = string
-}
+# variable "vsphere_datastore" {
+#   type = string
+# }
 
-variable "vsphere_folder" {
-  type    = string
-  default = "Rancher"
-}
+# variable "vsphere_folder" {
+#   type    = string
+#   default = "Rancher"
+# }
 
-variable "vsphere_resource_pool" {
-  type    = string
-  default = ""
-}
+# variable "vsphere_resource_pool" {
+#   type    = string
+#   default = ""
+# }
 
-variable "vsphere_networks" {
-  type = list(string)
-}
+# variable "vsphere_networks" {
+#   type = list(string)
+# }
 
-variable "template_ubuntu" {
-  type = string
-}
+# variable "template_ubuntu" {
+#   type = string
+# }
 
-variable "template_rocky" {
+# variable "template_rocky" {
+#   type = string
+# }
+
+variable "vsphere-rhel-template" {
   type = string
 }
 
@@ -136,6 +140,10 @@ variable "ssh_private_key_pem" {
 
 # Air-gap / registry
 variable "system_default_registry" {
+  type = string
+}
+
+variable "airgap_private_mirror" {
   type = string
 }
 
